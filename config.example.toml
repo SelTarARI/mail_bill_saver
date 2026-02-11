@@ -1,0 +1,9 @@
+[imap]
+host = "imap.example.com"
+port = 993
+username = "your@email.com"
+password = "YOUR_PASSWORD_OR_APP_PASSWORD"
+mailbox = "INBOX"
+
+[run]
+max_emails = 10

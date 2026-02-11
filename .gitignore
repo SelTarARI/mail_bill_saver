@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Config with credentials
+config.toml
+
+# Logs / local output
+*.log
+output/
+Bills/
