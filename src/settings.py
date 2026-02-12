@@ -3,6 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import tomllib
+from turtle import st
+
+
+@dataclass(frozen=True)
+class StorageConfig:
+    base_folder: Path
 
 
 @dataclass(frozen=True)
@@ -23,6 +29,7 @@ class RunConfig:
 class AppConfig:
     imap: ImapConfig
     run: RunConfig
+    storage: StorageConfig
 
 
 def load_config(config_path: str | Path = "config.toml") -> AppConfig:
@@ -46,4 +53,10 @@ def load_config(config_path: str | Path = "config.toml") -> AppConfig:
     )
     run_cfg = RunConfig(max_emails=int(rn.get("max_emails", 10)))
 
-    return AppConfig(imap=imap_cfg, run=run_cfg)
+    st = data.get("storage", {})
+
+    storage_cfg = StorageConfig(
+        base_folder=Path(st.get("base_folder", "Bills")).expanduser().resolve()
+    )
+
+    return AppConfig(imap=imap_cfg, run=run_cfg, storage=storage_cfg)

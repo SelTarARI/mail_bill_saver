@@ -5,5 +5,9 @@ username = "your@email.com"
 password = "YOUR_PASSWORD_OR_APP_PASSWORD"
 mailbox = "INBOX"
 
+[storage]
+[storage]
+base_folder = "PATH/TO/TARGET/FOLDER"
+
 [run]
 max_emails = 10
