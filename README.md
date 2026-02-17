@@ -176,11 +176,3 @@ For stable operation:
   "C:/Bills"
 - The program is safe to run repeatedly.
 
----
-
-## 🚀 Future Improvements (Optional)
-
-- Mark processed bills as \Seen
-- Move classifier rules fully to config
-- Add automated tests using sample `.eml` files
-- Add CLI arguments for dry-run mode
