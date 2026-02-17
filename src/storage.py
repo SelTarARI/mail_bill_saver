@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from email.utils import parsedate_to_datetime
-from typing import Tuple
-
 from .utils import sanitize_windows_name
 
 

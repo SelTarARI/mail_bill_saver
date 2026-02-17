@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import tomllib
-from turtle import st
 
 
 @dataclass(frozen=True)

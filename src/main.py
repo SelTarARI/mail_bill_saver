@@ -39,6 +39,8 @@ def main() -> int:
     log_path = cfg.storage.base_folder / "run.log"
     logger = setup_logging(log_path)
 
+    logger.info(f"Storage folder: {cfg.storage.base_folder}")
+
     logger.info(
         f"Config: save_all_attachments_if_bill={cfg.storage.save_all_attachments_if_bill}, "
         f"allowed_extensions={list(cfg.storage.allowed_extensions)}"
@@ -129,7 +131,9 @@ def main() -> int:
                         name_lower = a.filename.lower()
                         ext = name_lower.rsplit(".", 1)[-1] if "." in name_lower else ""
                         if ext not in cfg.storage.allowed_extensions:
-                            logger.info(f"SKIP attachment (ext not allowed): {a.filename}")
+                            logger.info(
+                                f"SKIP attachment (ext not allowed): {a.filename}"
+                            )
                             continue
 
                     h = sha256_bytes(a.payload)
@@ -140,11 +144,12 @@ def main() -> int:
                         continue
 
                     out_path = save_attachment(folder, a.filename, a.payload)
-                    record_attachment(conn_db, h, pe.message_id or "", a.filename, str(out_path))
+                    record_attachment(
+                        conn_db, h, pe.message_id or "", a.filename, str(out_path)
+                    )
                     saved_files += 1
                     logger.info(f"SAVED: {out_path}")
                     saved_any = True
-
 
                 # Mark BILL emails processed (so we don't re-handle next run)
                 mark_email_processed(

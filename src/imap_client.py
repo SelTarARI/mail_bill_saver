@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import imaplib
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import List
 
 
 @dataclass

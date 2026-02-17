@@ -6,7 +6,6 @@ from email.message import EmailMessage
 from email.parser import BytesParser
 from typing import List
 import re
-
 from .utils import decode_mime_header
 
 
