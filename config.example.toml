@@ -7,6 +7,7 @@ mailbox = "INBOX"
 
 [run]
 max_emails = 10
+days_back = 7
 
 [storage]
 base_folder = "bills"

@@ -24,6 +24,7 @@ class ImapConfig:
 @dataclass(frozen=True)
 class RunConfig:
     max_emails: int = 10
+    days_back: int = 7
 
 
 @dataclass(frozen=True)
@@ -52,7 +53,10 @@ def load_config(config_path: str | Path = "config.toml") -> AppConfig:
         password=str(im["password"]),
         mailbox=str(im.get("mailbox", "INBOX")),
     )
-    run_cfg = RunConfig(max_emails=int(rn.get("max_emails", 10)))
+    run_cfg = RunConfig(
+        max_emails=int(rn.get("max_emails", 10)),
+        days_back=int(rn.get("days_back", 7)),
+    )
 
     st = data.get("storage", {})
 

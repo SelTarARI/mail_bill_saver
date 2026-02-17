@@ -4,7 +4,7 @@ from .settings import load_config
 from .imap_client import (
     connect_imap,
     select_mailbox,
-    search_unseen,
+    search_unseen_since,
     fetch_rfc822_peek,
     logout,
 )
@@ -66,12 +66,12 @@ def main() -> int:
 
     try:
         select_mailbox(conn, cfg.imap.mailbox)
-        ids = search_unseen(conn)
+        ids = search_unseen_since(conn, cfg.run.days_back)
 
         ids_to_process = list(reversed(ids))[: cfg.run.max_emails]
         logger.info(
-            f"Found {len(ids)} unseen; processing newest {len(ids_to_process)} "
-            f"(max_emails={cfg.run.max_emails})"
+            f"Found {len(ids)} unseen since last {cfg.run.days_back} days; "
+            f"processing newest {len(ids_to_process)} (max_emails={cfg.run.max_emails})"
         )
 
         if not ids_to_process:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import imaplib
 from dataclasses import dataclass
-from typing import List
+from datetime import datetime, timedelta
 
 
 @dataclass
@@ -23,11 +23,16 @@ def select_mailbox(conn: ImapConnection, mailbox: str) -> None:
         raise RuntimeError(f"Failed to select mailbox: {mailbox}")
 
 
-def search_unseen(conn: ImapConnection) -> List[bytes]:
-    status, data = conn.client.search(None, "UNSEEN")
+def search_unseen_since(conn: ImapConnection, days_back: int) -> list[bytes]:
+    since_date = datetime.utcnow() - timedelta(days=days_back)
+    imap_date = since_date.strftime("%d-%b-%Y")  # IMAP date format
+
+    search_criteria = f"(UNSEEN SINCE {imap_date})"
+
+    status, data = conn.client.search(None, search_criteria)
     if status != "OK":
-        raise RuntimeError("IMAP search failed")
-    # data is [b'1 2 3']
+        raise RuntimeError(f"IMAP search failed: {search_criteria}")
+
     ids = data[0].split() if data and data[0] else []
     return ids
 
