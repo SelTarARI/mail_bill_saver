@@ -1,5 +1,5 @@
 from __future__ import annotations
-from .storage import ensure_base_folder
+
 from .settings import load_config
 from .imap_client import (
     connect_imap,
@@ -10,7 +10,6 @@ from .imap_client import (
 )
 from .email_parser import parse_email
 from .classifier import classify_email
-from pathlib import Path
 from .db import (
     init_db,
     email_already_processed,
@@ -25,17 +24,37 @@ from .storage import (
     save_attachment,
 )
 from .utils import extract_domain, sha256_bytes
+from .logger_setup import setup_logging
 
 
 def main() -> int:
     cfg = load_config("config.toml")
 
+    # Prepare storage + DB + logging
     ensure_base_folder(cfg.storage.base_folder)
+
     db_path = cfg.storage.base_folder / "processed.sqlite"
     conn_db = init_db(db_path)
-    print(f"Storage folder: {cfg.storage.base_folder}")
-    print(f"DB: {db_path}")
 
+    log_path = cfg.storage.base_folder / "run.log"
+    logger = setup_logging(log_path)
+
+    logger.info(
+        f"Config: save_all_attachments_if_bill={cfg.storage.save_all_attachments_if_bill}, "
+        f"allowed_extensions={list(cfg.storage.allowed_extensions)}"
+    )
+
+    logger.info(f"DB: {db_path}")
+
+    # Counters for a clean summary
+    scanned = 0
+    bills = 0
+    saved_files = 0
+    skipped_dupe = 0
+    skipped_processed = 0
+    errors = 0
+
+    # Connect IMAP
     conn = connect_imap(
         host=cfg.imap.host,
         port=cfg.imap.port,
@@ -47,107 +66,112 @@ def main() -> int:
         select_mailbox(conn, cfg.imap.mailbox)
         ids = search_unseen(conn)
 
-        print(f"Found {len(ids)} unseen emails in {cfg.imap.mailbox!r}")
-        if not ids:
+        ids_to_process = list(reversed(ids))[: cfg.run.max_emails]
+        logger.info(
+            f"Found {len(ids)} unseen; processing newest {len(ids_to_process)} "
+            f"(max_emails={cfg.run.max_emails})"
+        )
+
+        if not ids_to_process:
+            logger.info("No emails to process.")
             return 0
 
-        ids_to_process = list(reversed(ids))[: cfg.run.max_emails]
-
         for i, msg_id in enumerate(ids_to_process, start=1):
-            raw = fetch_rfc822_peek(conn, msg_id)
-            pe = parse_email(raw)
+            try:
+                scanned += 1
 
-            attachment_names = [a.filename for a in pe.attachments]
-            cl = classify_email(
-                subject=pe.subject,
-                body_text=pe.body_text,
-                attachment_filenames=attachment_names,
-                sender=pe.from_,
-                threshold=5,
-            )
+                raw = fetch_rfc822_peek(conn, msg_id)
+                pe = parse_email(raw)
 
-            # Skip if already processed (Message-ID based)
-            if pe.message_id and email_already_processed(conn_db, pe.message_id):
-                print("SKIP: already processed (message-id)")
-                continue
+                attachment_names = [a.filename for a in pe.attachments]
+                cl = classify_email(
+                    subject=pe.subject,
+                    body_text=pe.body_text,
+                    attachment_filenames=attachment_names,
+                    sender=pe.from_,
+                    threshold=5,
+                )
 
-            if cl.is_bill:
+                # Do NOT log or store NOT_BILL emails
+                if not cl.is_bill:
+                    continue
+
+                bills += 1
+
+                logger.info("-" * 70)
+                logger.info(f"[{i}/{len(ids_to_process)}] BILL email")
+                logger.info(f"IMAP ID: {msg_id.decode(errors='ignore')}")
+                logger.info(f"FROM: {pe.from_}")
+                logger.info(f"SUBJECT: {pe.subject}")
+                logger.info(f"DATE: {pe.date}")
+                logger.info(
+                    f"SCORE: {cl.score}  REASONS: {', '.join(cl.reasons) if cl.reasons else '(none)'}"
+                )
+
+                # Skip if already processed (Message-ID based)
+                if pe.message_id and email_already_processed(conn_db, pe.message_id):
+                    skipped_processed += 1
+                    logger.info("SKIP: already processed (message-id)")
+                    continue
+
                 sender_domain = extract_domain(pe.from_)
                 ym = year_month_from_date_header(pe.date)
                 folder = build_target_folder(cfg.storage.base_folder, sender_domain, ym)
 
                 saved_any = False
+
                 for a in pe.attachments:
                     if not a.payload:
                         continue
-                    name_lower = a.filename.lower()
-                    if not (
-                        name_lower.endswith(".pdf")
-                        or name_lower.endswith(".csv")
-                        or name_lower.endswith(".xml")
-                        or name_lower.endswith(".xlsx")
-                    ):
-                        print(f"SKIP attachment (not invoice type): {a.filename}")
-                        continue
+
+                    # Only filter by extension if "save_all_attachments_if_bill" is False
+                    if not cfg.storage.save_all_attachments_if_bill:
+                        name_lower = a.filename.lower()
+                        ext = name_lower.rsplit(".", 1)[-1] if "." in name_lower else ""
+                        if ext not in cfg.storage.allowed_extensions:
+                            logger.info(f"SKIP attachment (ext not allowed): {a.filename}")
+                            continue
 
                     h = sha256_bytes(a.payload)
+
                     if attachment_hash_exists(conn_db, h):
-                        print(f"SKIP attachment (duplicate hash): {a.filename}")
+                        skipped_dupe += 1
+                        logger.info(f"SKIP attachment (duplicate hash): {a.filename}")
                         continue
 
                     out_path = save_attachment(folder, a.filename, a.payload)
-                    record_attachment(
-                        conn_db, h, pe.message_id or "", a.filename, str(out_path)
-                    )
-                    print(f"SAVED: {out_path}")
+                    record_attachment(conn_db, h, pe.message_id or "", a.filename, str(out_path))
+                    saved_files += 1
+                    logger.info(f"SAVED: {out_path}")
                     saved_any = True
 
+
+                # Mark BILL emails processed (so we don't re-handle next run)
                 mark_email_processed(
                     conn_db, pe.message_id or "", pe.from_, pe.subject, pe.date, True
                 )
 
                 if not saved_any:
-                    print(
+                    logger.info(
                         "NOTE: classified as BILL but nothing new was saved (all duplicates or empty)."
                     )
-            """                    
-            else:
-                #still record that we saw it (optional). You can comment this out if you prefer.
-                mark_email_processed(
-                    conn_db, pe.message_id or "", pe.from_, pe.subject, pe.date, False
-                )
-            """
 
-            print("\n" + "-" * 70)
-            print(
-                f"[{i}/{len(ids_to_process)}] IMAP ID: {msg_id.decode(errors='ignore')}"
-            )
-            print(f"FROM:    {pe.from_}")
-            print(f"SUBJECT: {pe.subject}")
-            print(f"DATE:    {pe.date}")
+            except Exception as e:
+                errors += 1
+                logger.exception(f"ERROR processing IMAP ID {msg_id!r}: {e}")
+                continue
 
-            # show a small body snippet (helps debugging keywords)
-            snippet = (pe.body_text or "").strip().replace("\r", " ").replace("\n", " ")
-            if len(snippet) > 160:
-                snippet = snippet[:160] + "..."
-            print(f"BODY:    {snippet}")
-
-            print(
-                f"CLASSIFICATION: {'BILL' if cl.is_bill else 'NOT_BILL'} (score={cl.score})"
-            )
-            print(f"REASONS: {', '.join(cl.reasons) if cl.reasons else '(none)'}")
-
-            if pe.attachments:
-                print("ATTACHMENTS:")
-                for a in pe.attachments:
-                    kb = len(a.payload) / 1024.0
-                    print(f"  - {a.filename} ({a.content_type}, {kb:.1f} KB)")
-
-            else:
-                print("ATTACHMENTS: none")
-
+        logger.info(
+            f"SUMMARY: scanned={scanned}, bills={bills}, saved_files={saved_files}, "
+            f"skipped_processed={skipped_processed}, skipped_dupe={skipped_dupe}, errors={errors}"
+        )
         return 0
+
     finally:
+        try:
+            conn_db.close()
+        except Exception:
+            pass
         logout(conn)
 
 

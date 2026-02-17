@@ -9,6 +9,8 @@ from turtle import st
 @dataclass(frozen=True)
 class StorageConfig:
     base_folder: Path
+    save_all_attachments_if_bill: bool = False
+    allowed_extensions: tuple[str, ...] = ("pdf", "csv", "xml", "xlsx")
 
 
 @dataclass(frozen=True)
@@ -55,8 +57,15 @@ def load_config(config_path: str | Path = "config.toml") -> AppConfig:
 
     st = data.get("storage", {})
 
+    allowed = st.get("allowed_extensions", ["pdf", "csv", "xml", "xlsx"])
+    allowed = tuple(str(x).lower().lstrip(".") for x in allowed)
+
     storage_cfg = StorageConfig(
-        base_folder=Path(st.get("base_folder", "Bills")).expanduser().resolve()
+        base_folder=Path(st.get("base_folder", "Bills")).expanduser().resolve(),
+        save_all_attachments_if_bill=bool(
+            st.get("save_all_attachments_if_bill", False)
+        ),
+        allowed_extensions=allowed,
     )
 
     return AppConfig(imap=imap_cfg, run=run_cfg, storage=storage_cfg)

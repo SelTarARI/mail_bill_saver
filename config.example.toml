@@ -6,8 +6,14 @@ password = "YOUR_PASSWORD_OR_APP_PASSWORD"
 mailbox = "INBOX"
 
 [storage]
-[storage]
 base_folder = "PATH/TO/TARGET/FOLDER"
 
 [run]
 max_emails = 10
+
+# If true: save every attachment from emails classified as BILL
+save_all_attachments_if_bill = false
+
+# If save_all_attachments_if_bill is false, only these extensions are saved.
+# Put without dots, lower/upper doesn't matter.
+allowed_extensions = ["pdf", "csv", "xml", "xlsx"]
